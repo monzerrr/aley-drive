@@ -23,6 +23,10 @@ for (const road of roads) for (let i = 1; i < road.p.length; i++) {
   if (pointById[a] && pointById[b]) links.push({ a, b, type: road.t });
 }
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const pathLength = (points) => points.slice(1).reduce((sum, point, index) => sum + dist(points[index], point), 0);
+const polygonArea = (points) => Math.abs(points.reduce((sum, point, index) => {
+  const next = points[(index + 1) % points.length]; return sum + point.x * next.y - next.x * point.y;
+}, 0) / 2);
 // Draw a road as one swept corridor. The midpoint curves remove the tiny angular
 // kinks that raw mapping nodes create while keeping the real road's direction.
 const drawPath = (context, points, width, colour, cap = 'butt') => {
@@ -95,9 +99,22 @@ function renderMap() {
   const bg = mapCtx.createLinearGradient(0, 0, canvas.width, canvas.height); bg.addColorStop(0, '#e6ddc7'); bg.addColorStop(1, '#c9b998'); mapCtx.fillStyle = bg; mapCtx.fillRect(0, 0, canvas.width, canvas.height);
   let seed = 59; const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   for (let c = 0; c < 34; c++) { const cx = random() * canvas.width, cy = random() * canvas.height; for (let i = 0; i < 2 + Math.floor(random() * 4); i++) tree(cx + (random() - .5) * 44, cy + (random() - .5) * 32, 4 + random() * 7); }
-  buildings.forEach((building, index) => { const points = building.p.map((id) => pointById[id]); if (points.length < 4 || !points.some(visible)) return; mapCtx.beginPath(); points.forEach((p, i) => i ? mapCtx.lineTo(p.x, p.y) : mapCtx.moveTo(p.x, p.y)); mapCtx.closePath(); mapCtx.fillStyle = index % 3 === 0 ? '#eee4d2' : index % 3 === 1 ? '#ddd2bd' : '#e6dac5'; mapCtx.fill(); mapCtx.strokeStyle = '#b1a68f'; mapCtx.lineWidth = .9; mapCtx.stroke(); });
+  // Keep only block-sized footprints. Tiny raw OSM sheds/awnings were making the town look like visual noise.
+  buildings.forEach((building, index) => {
+    const points = building.p.map((id) => pointById[id]).filter(Boolean);
+    if (points.length < 4 || !points.some(visible) || polygonArea(points) < 95) return;
+    mapCtx.beginPath(); points.forEach((p, i) => i ? mapCtx.lineTo(p.x, p.y) : mapCtx.moveTo(p.x, p.y)); mapCtx.closePath();
+    mapCtx.fillStyle = index % 3 === 0 ? '#e9dfcd' : index % 3 === 1 ? '#d8cbb4' : '#e1d5c1'; mapCtx.fill();
+    mapCtx.strokeStyle = '#a99d87'; mapCtx.lineWidth = 1.3; mapCtx.stroke();
+  });
   const layers = ['service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary_link', 'primary', 'motorway'];
-  layers.forEach((type) => renderRoads.filter((road) => road.type === type && road.points.length > 1).forEach((road) => {
+  layers.forEach((type) => renderRoads.filter((road) => {
+    if (road.points.length < 2) return false;
+    const length = pathLength(road.points);
+    // Curated playable street hierarchy: retain real geometry but remove short, messy mapping fragments.
+    return ['motorway', 'primary', 'primary_link', 'secondary'].includes(type) ? length > 40 :
+      ['tertiary', 'residential', 'unclassified'].includes(type) ? length > 78 : length > 100;
+  }).forEach((road) => {
     const s = style[type] || style.residential;
     // verge / sidewalk / asphalt: three continuous passes, never dot-by-dot circles.
     drawPath(mapCtx, road.points, s.width + 10, '#e8dfc9');
