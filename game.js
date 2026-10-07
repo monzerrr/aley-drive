@@ -13,7 +13,7 @@ const STEER_RAMP = 420; // deg/s² — how fast steer rate ramps up/down
 
 // ── State ────────────────────────────────────────────────────────────────────────────
 const car = {
-  x: 2360, y: 720,   // on Route 30 at Aley junction, facing east
+  x: 2376, y: 530,   // on highway at Aley junction (نقاطع عاليه 12), facing east
   angle: 0,
   speed: 0,
   steerRate: 0,       // current actual turning rate (rad/s), smoothed
@@ -128,7 +128,7 @@ function render() {
 
 function drawRoads(ctx) {
   for (const r of ROADS) {
-    const isR30 = r.w >= 36;
+    const isR30 = r.w >= 38;
     // Kerb
     ctx.strokeStyle = '#111';
     ctx.lineWidth = r.w + 7;
@@ -252,7 +252,7 @@ function drawMinimap(ctx, W, H) {
 
   // Roads on minimap
   for (const r of ROADS) {
-    const isR30 = r.w >= 36;
+    const isR30 = r.w >= 38;
     ctx.strokeStyle = isR30 ? '#e6b800' : '#888';
     ctx.lineWidth = Math.max(1, r.w * sx * 0.6);
     ctx.beginPath();
@@ -309,7 +309,7 @@ function drawFullMap(ctx, W, H) {
   ctx.clip();
 
   for (const r of ROADS) {
-    const big = r.w >= 36;
+    const big = r.w >= 38;
     ctx.strokeStyle = '#111';
     ctx.lineWidth = Math.max(2, (r.w + 6) * sx);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
