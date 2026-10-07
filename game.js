@@ -119,13 +119,19 @@ function renderMap() {
       const s = style[type] || style.residential; mapCtx.lineWidth = s.width + extra; mapCtx.stroke();
     });
   };
-  paintNetwork(11, '#e9dfc8');
-  paintNetwork(6, '#343a38');
-  paintNetwork(2, '#b8ad95');
+  // Quiet, readable road stack: wide pale sidewalks, a slim shaded curb, then asphalt.
+  paintNetwork(14, '#ded8c9');
+  paintNetwork(8, '#aeb1aa');
+  paintNetwork(3, '#3b4140');
   ['service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary_link', 'primary', 'motorway'].forEach((type) => {
     mapCtx.beginPath(); links.filter((link) => link.type === type).forEach((link) => { const a = pointById[link.a], b = pointById[link.b]; if (!visible(a) && !visible(b)) return; mapCtx.moveTo(a.x, a.y); mapCtx.lineTo(b.x, b.y); });
     const s = style[type] || style.residential; mapCtx.lineWidth = s.width - 4; mapCtx.lineCap = 'square'; mapCtx.lineJoin = 'round'; mapCtx.strokeStyle = s.road; mapCtx.stroke();
   });
+  // Only the long major corridors get markings; this keeps the neighbourhood legible, not stripe-covered.
+  mapCtx.setLineDash([16, 18]);
+  renderRoads.filter((road) => ['motorway', 'primary', 'primary_link', 'secondary'].includes(road.type) && pathLength(road.points) > 115)
+    .forEach((road) => drawPath(mapCtx, road.points, 1.55, '#f0dc9bd6'));
+  mapCtx.setLineDash([]);
 }
 
 const spawn = nearestRoad(project([33.80905, 35.60325]));
