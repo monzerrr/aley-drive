@@ -1,19 +1,270 @@
-window.onerror=(m)=>{document.querySelector('#mission').textContent=String(m)};
-const canvas=document.querySelector('#world'),ctx=canvas.getContext('2d');
-const speedLabel=document.querySelector('#speed'),missionLabel=document.querySelector('#mission'),locationLabel=document.querySelector('#location');
-const style={avenue:{width:28,asphalt:'#454b4e',curb:'#989b96',edge:'#e7e0cf'},collector:{width:18,asphalt:'#53595a',curb:'#a9aaa3',edge:'#e9e2d4'},street:{width:10,asphalt:'#606565',curb:'#b7b7ad',edge:'#ece5d8'}};
-const {nodes,roads:raw}=window.ALEY_ROADS,bounds={north:33.8148,south:33.8070,east:35.6105,west:35.5990},pad=26;
-const P=(x,y)=>({x,y}),geo=([lat,lon])=>P(pad+(lon-bounds.west)/(bounds.east-bounds.west)*(canvas.width-pad*2),pad+(bounds.north-lat)/(bounds.north-bounds.south)*(canvas.height-pad*2));
-const inside=([lat,lon])=>lat<bounds.north&&lat>bounds.south&&lon<bounds.east&&lon>bounds.west,kind={primary:'avenue',secondary:'avenue',tertiary:'collector',residential:'street',unclassified:'street',service:'street'};
-const roads=raw.filter(r=>kind[r.t]&&r.p.some(id=>nodes[id]&&inside(nodes[id]))).map(r=>({type:r.t,kind:kind[r.t],points:r.p.map(id=>nodes[id]).filter(Boolean).map(geo)})).filter(r=>r.points.length>1);
-const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),close=(p,a,b)=>{let dx=b.x-a.x,dy=b.y-a.y,l=dx*dx+dy*dy||1,t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/l)),x=a.x+dx*t,y=a.y+dy*t;return{x,y,d:Math.hypot(p.x-x,p.y-y)}};
-function near(p){let best;roads.forEach(r=>r.points.slice(1).forEach((b,i)=>{let h=close(p,r.points[i],b);if(!best||h.d<best.d)best={...h,w:style[r.kind].width}}));return best}
-function path(c,ps,w,col){c.beginPath();c.moveTo(ps[0].x,ps[0].y);for(let i=1;i<ps.length-1;i++){let p=ps[i],n=ps[i+1];c.quadraticCurveTo(p.x,p.y,(p.x+n.x)/2,(p.y+n.y)/2)}c.lineTo(ps.at(-1).x,ps.at(-1).y);c.lineWidth=w;c.lineCap='round';c.lineJoin='round';c.strokeStyle=col;c.stroke()}
-const map=document.createElement('canvas');map.width=canvas.width;map.height=canvas.height;const m=map.getContext('2d');
-function tree(x,y,r){m.fillStyle='#315f40';m.beginPath();m.arc(x,y,r,0,7);m.fill();m.fillStyle='#6d934e';m.beginPath();m.arc(x-r/4,y-r/4,r/2,0,7);m.fill()}
-function render(){let g=m.createLinearGradient(0,0,canvas.width,canvas.height);g.addColorStop(0,'#e7dfcf');g.addColorStop(1,'#d4c5a9');m.fillStyle=g;m.fillRect(0,0,canvas.width,canvas.height);for(let x=60;x<canvas.width;x+=145)for(let y=85;y<canvas.height;y+=125){m.fillStyle=(x+y)%3?'#e3d5c0':'#d8c9b1';m.fillRect(x,y,70,42);m.strokeStyle='#b8ad99';m.strokeRect(x,y,70,42)}[[49,210],[91,274],[205,204],[365,128],[536,112],[708,140],[904,169],[1065,256],[1158,318],[987,455],[1128,508],[1080,690],[845,669],[610,670],[375,630],[175,543],[72,545],[276,730],[461,735]].forEach((p,i)=>tree(p[0],p[1],6+i%4));roads.forEach(r=>{let s=style[r.kind];path(m,r.points,s.width+8,s.edge)});roads.forEach(r=>{let s=style[r.kind];path(m,r.points,s.width+4,s.curb)});roads.forEach(r=>path(m,r.points,style[r.kind].width,style[r.kind].asphalt));let main=roads.find(r=>r.type==='primary');if(main){m.save();m.setLineDash([18,19]);path(m,main.points,1.6,'#f3db91');m.restore()}}
-function length(r){return r.points.slice(1).reduce((n,p,i)=>n+dist(r.points[i],p),0)}function along(r,n){for(let i=1;i<r.points.length;i++){let a=r.points[i-1],b=r.points[i],l=dist(a,b);if(n<=l)return{x:a.x+(b.x-a.x)*n/l,y:a.y+(b.y-a.y)*n/l,a:Math.atan2(b.y-a.y,b.x-a.x)}n-=l}let a=r.points.at(-2),b=r.points.at(-1);return{x:b.x,y:b.y,a:Math.atan2(b.y-a.y,b.x-a.x)}}
-const spawn=near(P(236,558)),car={x:spawn.x,y:spawn.y,a:-.39,v:0},keys=new Set(),traffic=[0,1,3,4,8].filter(i=>roads[i]).map((i,n)=>({r:roads[i],o:n*124,c:['#416b96','#d5a23d','#ba554d','#72846a','#765b91'][n]}));
-function vehicle(x,y,a,c,s=1){ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.fillStyle=c;ctx.fillRect(-14*s,-8*s,28*s,16*s);ctx.fillStyle='#1e292b';ctx.fillRect(-5*s,-6*s,11*s,12*s);ctx.fillStyle='#ffe17d';ctx.fillRect(10*s,-4*s,4*s,8*s);ctx.strokeStyle='#fff7df';ctx.strokeRect(-14*s,-8*s,28*s,16*s);ctx.restore()}
-let last=performance.now(),paused=document.hidden;function loop(now){if(paused)return;let dt=Math.min((now-last)/16.7,2);last=now;if(keys.has('w')||keys.has('arrowup'))car.v+=.075*dt;if(keys.has('s')||keys.has('arrowdown'))car.v-=.09*dt;car.v*=Math.pow(.94,dt);car.v=Math.max(-2.4,Math.min(4.1,car.v));let turn=(keys.has('a')||keys.has('arrowleft')?-1:0)+(keys.has('d')||keys.has('arrowright')?1:0);car.a+=turn*.046*dt*(car.v>=0?1:-1);let q=P(car.x+Math.cos(car.a)*car.v*dt,car.y+Math.sin(car.a)*car.v*dt),road=near(q);if(road.d<=road.w/2+9){car.x=q.x;car.y=q.y}else car.v*=.28;ctx.drawImage(map,0,0);traffic.forEach((t,i)=>{let p=along(t.r,(now*(.034+i*.004)+t.o)%length(t.r));vehicle(p.x,p.y,p.a,t.c,.72)});vehicle(car.x,car.y,car.a,'#dd3e37');speedLabel.textContent=Math.round(Math.abs(car.v)*19)+' km/h';missionLabel.textContent='Explore central Aley';locationLabel.textContent='Aley drive district';requestAnimationFrame(loop)}
-addEventListener('keydown',e=>{let k=e.key.toLowerCase();if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k))e.preventDefault();keys.add(k)});addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));document.addEventListener('visibilitychange',()=>{paused=document.hidden;if(!paused){last=performance.now();requestAnimationFrame(loop)}});render();requestAnimationFrame(loop);
+'use strict';
+// ── Constants ────────────────────────────────────────────────────────────────
+const PX_PER_KMH = 3.2;   // world-px per frame at 1 km/h (60 fps) → ~448px/s @ 140
+const MAX_SPEED  = 140;    // km/h
+const ACCEL      = 80;     // km/h per second
+const BRAKE      = 180;
+const FRICTION   = 32;
+const OFF_FRIC   = 260;
+const TURN_BASE  = 180;    // deg/s at max speed (speed-sensitive)
+
+// ── State ────────────────────────────────────────────────────────────────────
+const car = {
+  x: 2085, y: 744,
+  angle: 0,   // radians; 0 = east
+  speed: 0,   // km/h
+};
+
+const cam = { x: car.x, y: car.y };
+const keys = {};
+
+let offRoadAlpha = 0;
+let canvas, ctx;
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  canvas = document.getElementById('c');
+  ctx    = canvas.getContext('2d');
+  resize();
+  window.addEventListener('resize', resize);
+  window.addEventListener('keydown', e => { keys[e.key] = true;  e.preventDefault(); });
+  window.addEventListener('keyup',   e => { keys[e.key] = false; });
+  requestAnimationFrame(loop);
+});
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+
+// ── Main loop ────────────────────────────────────────────────────────────────
+let last = 0;
+function loop(ts) {
+  const dt = Math.min((ts - last) / 1000, 0.05);
+  last = ts;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ── Physics ──────────────────────────────────────────────────────────────────
+function update(dt) {
+  const fwd   = keys['ArrowUp']    || keys['w'] || keys['W'];
+  const back  = keys['ArrowDown']  || keys['s'] || keys['S'];
+  const left  = keys['ArrowLeft']  || keys['a'] || keys['A'];
+  const right = keys['ArrowRight'] || keys['d'] || keys['D'];
+
+  if (fwd)       car.speed = Math.min(MAX_SPEED, car.speed + ACCEL * dt);
+  else if (back) car.speed = Math.max(-MAX_SPEED*0.4, car.speed - BRAKE * dt);
+  else {
+    const fr = pointOnRoad(car.x, car.y) ? FRICTION : OFF_FRIC;
+    if (car.speed > 0) car.speed = Math.max(0, car.speed - fr * dt);
+    else               car.speed = Math.min(0, car.speed + fr * dt);
+  }
+
+  if (!pointOnRoad(car.x, car.y) && car.speed > 0)
+    car.speed = Math.max(0, car.speed - OFF_FRIC * dt);
+
+  const spd = Math.abs(car.speed);
+  const turnRate = TURN_BASE * (spd / MAX_SPEED) * (Math.PI / 180);
+  if (left)  car.angle -= turnRate * dt * Math.sign(car.speed);
+  if (right) car.angle += turnRate * dt * Math.sign(car.speed);
+
+  car.x += Math.cos(car.angle) * car.speed * PX_PER_KMH * dt * 60;
+  car.y += Math.sin(car.angle) * car.speed * PX_PER_KMH * dt * 60;
+  car.x = Math.max(0, Math.min(WW, car.x));
+  car.y = Math.max(0, Math.min(WH, car.y));
+
+  const lerp = 0.14;
+  cam.x += (car.x - cam.x) * lerp;
+  cam.y += (car.y - cam.y) * lerp;
+
+  const onRoad = pointOnRoad(car.x, car.y);
+  offRoadAlpha += ((onRoad ? 0 : 0.6) - offRoadAlpha) * Math.min(1, dt * 4);
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────────
+function render() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.translate(W/2 - cam.x, H/2 - cam.y);
+
+  // Ground
+  ctx.fillStyle = '#3a4a2e';
+  ctx.fillRect(0, 0, WW, WH);
+
+  drawTrees(ctx);
+  drawRoads(ctx);
+  drawBuildings(ctx);
+  drawCar(ctx);
+
+  ctx.restore();
+
+  // HUD
+  drawSpeedometer(ctx, W, H);
+  drawMinimap(ctx, W, H);
+  drawOffRoadWarning(ctx, W, H);
+}
+
+function drawRoads(ctx) {
+  for (const r of ROADS) {
+    const isR30 = r.w >= 32;
+    // Kerb
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = r.w + 7;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    strokePath(ctx, r.p);
+
+    // Asphalt base
+    ctx.strokeStyle = isR30 ? '#3a3a3a' : '#484848';
+    ctx.lineWidth = r.w;
+    strokePath(ctx, r.p);
+
+    // Surface
+    ctx.strokeStyle = isR30 ? '#4a4040' : '#585858';
+    ctx.lineWidth = r.w - 4;
+    strokePath(ctx, r.p);
+
+    // Center line
+    ctx.strokeStyle = isR30 ? 'rgba(255,210,0,0.45)' : 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([40, 30]);
+    strokePath(ctx, r.p);
+    ctx.setLineDash([]);
+  }
+}
+
+function strokePath(ctx, pts) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.stroke();
+}
+
+function drawCar(ctx) {
+  ctx.save();
+  ctx.translate(car.x, car.y);
+  ctx.rotate(car.angle);
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(4, 4, 22, 12, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Body
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath();
+  ctx.roundRect(-22, -11, 44, 22, 5);
+  ctx.fill();
+  // Windshield
+  ctx.fillStyle = 'rgba(180,220,255,0.7)';
+  ctx.beginPath();
+  ctx.roundRect(2, -8, 14, 16, 2);
+  ctx.fill();
+  // Wheels
+  ctx.fillStyle = '#222';
+  [[-14,-12],[-14,12],[14,-12],[14,12]].forEach(([wx,wy]) => {
+    ctx.beginPath();
+    ctx.roundRect(wx-5, wy-4, 10, 8, 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+// ── Speedometer ──────────────────────────────────────────────────────────────
+function drawSpeedometer(ctx, W, H) {
+  const cx = W - 100, cy = H - 100, r = 72;
+  const startA = Math.PI * 0.75, endA = Math.PI * 2.25;
+  const spd = Math.abs(car.speed);
+  const frac = spd / MAX_SPEED;
+
+  ctx.save();
+  // Background disc
+  ctx.fillStyle = 'rgba(10,10,10,0.82)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.fill();
+
+  // Color arc
+  const grad = ctx.createConicalGradient ? null : null; // fallback below
+  const arcEnd = startA + (endA - startA) * frac;
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = frac < 0.5 ? '#4caf50' : frac < 0.8 ? '#ffc107' : '#f44336';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 8, startA, arcEnd);
+  ctx.stroke();
+
+  // Track
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 8, arcEnd, endA);
+  ctx.stroke();
+
+  // Speed text
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${r * 0.52}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(Math.round(spd), cx, cy - 6);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = `${r * 0.22}px sans-serif`;
+  ctx.fillText('km/h', cx, cy + r * 0.38);
+
+  ctx.restore();
+}
+
+// ── Minimap ───────────────────────────────────────────────────────────────────
+function drawMinimap(ctx, W, H) {
+  const mw = 150, mh = 94, mx = 12, my = H - mh - 12;
+  const sx = mw / WW, sy = mh / WH;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,10,10,0.72)';
+  ctx.beginPath();
+  ctx.roundRect(mx, my, mw, mh, 6);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.roundRect(mx, my, mw, mh, 6);
+  ctx.clip();
+
+  // Roads on minimap
+  for (const r of ROADS) {
+    const isR30 = r.w >= 32;
+    ctx.strokeStyle = isR30 ? '#e6b800' : '#888';
+    ctx.lineWidth = Math.max(1, r.w * sx * 0.6);
+    ctx.beginPath();
+    ctx.moveTo(mx + r.p[0][0]*sx, my + r.p[0][1]*sy);
+    for (let i = 1; i < r.p.length; i++)
+      ctx.lineTo(mx + r.p[i][0]*sx, my + r.p[i][1]*sy);
+    ctx.stroke();
+  }
+
+  // Car dot
+  ctx.fillStyle = '#f44336';
+  ctx.beginPath();
+  ctx.arc(mx + car.x*sx, my + car.y*sy, 3, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ── Off-road warning ──────────────────────────────────────────────────────────
+function drawOffRoadWarning(ctx, W, H) {
+  if (offRoadAlpha < 0.01) return;
+  ctx.save();
+  ctx.globalAlpha = offRoadAlpha;
+  ctx.strokeStyle = '#ff5722';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(3, 3, W-6, H-6);
+  ctx.fillStyle = '#ff5722';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('OFF ROAD', W/2, 36);
+  ctx.restore();
+}
