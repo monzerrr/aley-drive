@@ -19,6 +19,7 @@ const cam = { x: car.x, y: car.y };
 const keys = {};
 
 let offRoadAlpha = 0;
+let showMap = false;
 let canvas, ctx;
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -27,8 +28,12 @@ window.addEventListener('DOMContentLoaded', () => {
   ctx    = canvas.getContext('2d');
   resize();
   window.addEventListener('resize', resize);
-  window.addEventListener('keydown', e => { keys[e.key] = true;  e.preventDefault(); });
-  window.addEventListener('keyup',   e => { keys[e.key] = false; });
+  window.addEventListener('keydown', e => {
+    if (e.key === 'm' || e.key === 'M') { showMap = !showMap; return; }
+    keys[e.key] = true;
+    e.preventDefault();
+  });
+  window.addEventListener('keyup', e => { keys[e.key] = false; });
   requestAnimationFrame(loop);
 });
 
@@ -70,8 +75,8 @@ function update(dt) {
   if (left)  car.angle -= turnRate * dt * Math.sign(car.speed);
   if (right) car.angle += turnRate * dt * Math.sign(car.speed);
 
-  car.x += Math.cos(car.angle) * car.speed * PX_PER_KMH * dt * 60;
-  car.y += Math.sin(car.angle) * car.speed * PX_PER_KMH * dt * 60;
+  car.x += Math.cos(car.angle) * car.speed * PX_PER_KMH * dt;
+  car.y += Math.sin(car.angle) * car.speed * PX_PER_KMH * dt;
   car.x = Math.max(0, Math.min(WW, car.x));
   car.y = Math.max(0, Math.min(WH, car.y));
 
@@ -106,6 +111,7 @@ function render() {
   drawSpeedometer(ctx, W, H);
   drawMinimap(ctx, W, H);
   drawOffRoadWarning(ctx, W, H);
+  if (showMap) drawFullMap(ctx, W, H);
 }
 
 function drawRoads(ctx) {
@@ -266,5 +272,88 @@ function drawOffRoadWarning(ctx, W, H) {
   ctx.font = 'bold 20px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('OFF ROAD', W/2, 36);
+  ctx.restore();
+}
+
+// ── Full map overlay (M key) ──────────────────────────────────────────────────
+function drawFullMap(ctx, W, H) {
+  const pad = 40;
+  const mw = W - pad*2, mh = H - pad*2;
+  const sx = mw / WW, sy = mh / WH;
+  const ox = pad, oy = pad;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,12,10,0.92)';
+  ctx.beginPath();
+  ctx.roundRect(ox - 8, oy - 8, mw + 16, mh + 16, 12);
+  ctx.fill();
+
+  ctx.fillStyle = '#2a3a1e';
+  ctx.beginPath();
+  ctx.roundRect(ox, oy, mw, mh, 8);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.roundRect(ox, oy, mw, mh, 8);
+  ctx.clip();
+
+  for (const r of ROADS) {
+    const big = r.w >= 32;
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = Math.max(2, (r.w + 6) * sx);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ox + r.p[0][0]*sx, oy + r.p[0][1]*sy);
+    for (let i = 1; i < r.p.length; i++) ctx.lineTo(ox + r.p[i][0]*sx, oy + r.p[i][1]*sy);
+    ctx.stroke();
+
+    ctx.strokeStyle = big ? '#5a5050' : '#686868';
+    ctx.lineWidth = Math.max(1.5, r.w * sx);
+    ctx.beginPath();
+    ctx.moveTo(ox + r.p[0][0]*sx, oy + r.p[0][1]*sy);
+    for (let i = 1; i < r.p.length; i++) ctx.lineTo(ox + r.p[i][0]*sx, oy + r.p[i][1]*sy);
+    ctx.stroke();
+
+    if (big) {
+      ctx.strokeStyle = 'rgba(255,210,0,0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(ox + r.p[0][0]*sx, oy + r.p[0][1]*sy);
+      for (let i = 1; i < r.p.length; i++) ctx.lineTo(ox + r.p[i][0]*sx, oy + r.p[i][1]*sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  for (const b of LANDMARKS) {
+    const bx = ox + b.x*sx, by = oy + b.y*sy;
+    const bw = Math.max(8, b.w*sx), bh = Math.max(5, b.h*sy);
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.roundRect(bx - bw/2, by - bh/2, bw, bh, 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.max(9, Math.round(11 * sx * 50))}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(b.label, bx, by);
+  }
+
+  ctx.fillStyle = '#f44336';
+  ctx.beginPath();
+  ctx.arc(ox + car.x*sx, oy + car.y*sy, 5, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('M — close map', W/2, oy + mh + 22);
   ctx.restore();
 }
