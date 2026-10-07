@@ -117,13 +117,14 @@ let delivery = 0, completed = false;
 const trafficPaths = renderRoads.filter((road) => ['primary', 'secondary', 'tertiary'].includes(road.type) && road.points.length > 6).sort((a, b) => b.points.length - a.points.length).slice(0, 5);
 // Ambient traffic stays deliberately calm, so the streets feel lived-in rather than frantic.
 const traffic = trafficPaths.map((road, i) => ({ road, offset: i * 93, speed: 0.052 + i * .006, colour: ['#456f9c', '#d4a440', '#b44f4a', '#7d8f72', '#765c92'][i] }));
-const keys = new Set(); let last = performance.now();
+const keys = new Set(); let last = performance.now(); let paused = document.hidden;
 function reset() { Object.assign(car, { x: spawn.x, y: spawn.y, angle: -.28, velocity: 0 }); }
 function vehicle(x, y, angle, colour, scale = 1) { ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.shadowColor = '#0009'; ctx.shadowBlur = 7; ctx.fillStyle = colour; ctx.fillRect(-14 * scale, -8 * scale, 28 * scale, 16 * scale); ctx.shadowBlur = 0; ctx.fillStyle = '#1f292c'; ctx.fillRect(-5 * scale, -6 * scale, 11 * scale, 12 * scale); ctx.fillStyle = '#ffe17d'; ctx.fillRect(10 * scale, -4 * scale, 4 * scale, 8 * scale); ctx.strokeStyle = '#fff7df'; ctx.lineWidth = 1.3; ctx.strokeRect(-14 * scale, -8 * scale, 28 * scale, 16 * scale); ctx.restore(); }
 function drawDelivery() { if (completed) return; const target = deliverySpots[delivery]; const pulse = 1 + Math.sin(performance.now() / 180) * .12; ctx.beginPath(); ctx.arc(target.x, target.y, 16 * pulse, 0, Math.PI * 2); ctx.fillStyle = '#4ea8eaff'; ctx.fill(); ctx.beginPath(); ctx.arc(target.x, target.y, 7, 0, Math.PI * 2); ctx.fillStyle = '#ecf8ffff'; ctx.fill(); }
 function drawTraffic(now) { traffic.forEach((npc) => { const lengths = npc.road.points.slice(1).reduce((sum, point, i) => sum + dist(npc.road.points[i], point), 0); const p = pointOnPath(npc.road.points, (now * npc.speed + npc.offset) % lengths); vehicle(p.x, p.y, p.angle, npc.colour, .72); }); }
 function draw(now) { ctx.drawImage(mapLayer, 0, 0); drawDelivery(); drawTraffic(now); vehicle(car.x, car.y, car.angle, '#dd3e37'); }
 function update(now) {
+  if (paused) return;
   const dt = Math.min((now - last) / 16.67, 2); last = now;
   if (keys.has('w') || keys.has('arrowup')) car.velocity += .085 * dt;
   if (keys.has('s') || keys.has('arrowdown')) car.velocity -= .1 * dt;
@@ -141,4 +142,8 @@ function update(now) {
 }
 addEventListener('keydown', (event) => { const key = event.key.toLowerCase(); if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','r'].includes(key)) event.preventDefault(); keys.add(key); if (key === 'r') reset(); });
 addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
+document.addEventListener('visibilitychange', () => {
+  paused = document.hidden;
+  if (!paused) { last = performance.now(); requestAnimationFrame(update); }
+});
 renderMap(); draw(performance.now()); requestAnimationFrame(update);
