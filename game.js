@@ -1,3 +1,4 @@
+window.onerror=(m)=>{document.querySelector('#mission').textContent=String(m)};
 const canvas=document.querySelector('#world'),ctx=canvas.getContext('2d');
 const speedLabel=document.querySelector('#speed'),missionLabel=document.querySelector('#mission'),locationLabel=document.querySelector('#location');
 const style={avenue:{width:28,asphalt:'#454b4e',curb:'#989b96',edge:'#e7e0cf'},collector:{width:18,asphalt:'#53595a',curb:'#a9aaa3',edge:'#e9e2d4'},street:{width:10,asphalt:'#606565',curb:'#b7b7ad',edge:'#ece5d8'}};
