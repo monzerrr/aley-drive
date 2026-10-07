@@ -25,28 +25,36 @@ for (const road of roads) for (let i = 1; i < road.p.length; i++) {
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const drawPath = (context, points, width, colour, cap = 'butt') => { context.beginPath(); points.forEach((p, i) => i ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)); context.lineWidth = width; context.lineCap = cap; context.lineJoin = 'round'; context.strokeStyle = colour; context.stroke(); };
 
-// OSM breaks one real road into many tiny ways. Merge same-type links through simple degree-two nodes.
+// OSM splits a single physical street into many small ways. Rebuild each road type
+// as maximal chains, only stopping at real junctions or dead ends—not arbitrary data splits.
 function mergeLinks() {
   const output = [];
   for (const type of [...new Set(links.map((item) => item.type))]) {
     const group = links.filter((item) => item.type === type);
     const attached = new Map();
-    group.forEach((link, i) => [link.a, link.b].forEach((id) => { if (!attached.has(id)) attached.set(id, []); attached.get(id).push(i); }));
+    group.forEach((link, index) => [link.a, link.b].forEach((id) => {
+      if (!attached.has(id)) attached.set(id, []); attached.get(id).push(index);
+    }));
     const used = new Set();
-    for (let i = 0; i < group.length; i++) {
-      if (used.has(i)) continue;
-      const first = group[i];
-      let start = (attached.get(first.a) || []).length === 2 ? first.b : first.a;
-      const ids = [start]; let edge = i; let node = start;
+    const trace = (start, firstEdge) => {
+      const ids = [start]; let node = start, edge = firstEdge;
       while (edge !== undefined && !used.has(edge)) {
-        used.add(edge); const link = group[edge]; const next = link.a === node ? link.b : link.a; ids.push(next); node = next;
+        used.add(edge);
+        const link = group[edge]; const next = link.a === node ? link.b : link.a;
+        ids.push(next); node = next;
         const choices = (attached.get(node) || []).filter((candidate) => !used.has(candidate));
-        if ((attached.get(node) || []).length !== 2 || choices.length !== 1) break;
-        edge = choices[0];
+        edge = choices.length === 1 && (attached.get(node) || []).length === 2 ? choices[0] : undefined;
       }
-      const points = ids.map((id) => pointById[id]);
-      if (points.some(visible)) output.push({ type, points });
-    }
+      const points = ids.map((id) => pointById[id]).filter(Boolean);
+      if (points.length > 1 && points.some(visible)) output.push({ type, points });
+    };
+    // Start chains from actual intersections and dead ends first.
+    attached.forEach((edgeIds, node) => {
+      if (edgeIds.length === 2) return;
+      edgeIds.forEach((edge) => { if (!used.has(edge)) trace(node, edge); });
+    });
+    // Close any loops that have no junction/dead-end seed.
+    group.forEach((link, edge) => { if (!used.has(edge)) trace(link.a, edge); });
   }
   return output;
 }
