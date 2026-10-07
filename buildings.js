@@ -1,32 +1,32 @@
 'use strict';
-// Landmark positions re-traced from satellite image (coords × 3 = world px).
-// image (x,y) × 3 = world (x,y)
+// Landmark positions remapped to match OSM-traced road coordinates.
+// Scale from OSM image: x_game = x_img × 3.32, y_game = y_img × 3.89
 
 const LANDMARKS = [
-  // ── Along / north of Route 30 ─────────────────────────────────────────────
-  { x:1350, y:480,  w:150, h:100, color:'#5d4037', label:'Aley Padel' },
-  { x:1530, y:570,  w:150, h:100, color:'#6d4c41', label:'Al Abdalla' },
+  // ── Along Route 30 ────────────────────────────────────────────────────────────────────────────
+  { x:1200, y:560,  w:150, h:100, color:'#5d4037', label:'Aley Padel' },
+  { x:1500, y:620,  w:150, h:100, color:'#6d4c41', label:'Al Abdalla' },
 
-  // ── Upper residential (just below Route 30 arc) ───────────────────────────
-  { x:1620, y:975,  w:165, h:105, color:'#1565c0', label:'Aley Center' },
-  { x:2340, y:1005, w:165, h:105, color:'#4a148c', label:'The Game Aley' },
-  { x:2250, y:1170, w:135, h:90,  color:'#b71c1c', label:'Al-Iman Hosp.' },
-  { x:1710, y:1134, w:135, h:90,  color:'#bf360c', label:'Stories Coffee' },
+  // ── Aley town center ───────────────────────────────────────────────────────────────────────
+  { x:1800, y:1300, w:165, h:105, color:'#1565c0', label:'Aley Center' },
+  { x:2300, y:1270, w:165, h:105, color:'#4a148c', label:'The Game Aley' },
+  { x:2200, y:1420, w:135, h:90,  color:'#b71c1c', label:'Al-Iman Hosp.' },
+  { x:1900, y:1440, w:135, h:90,  color:'#bf360c', label:'Stories Coffee' },
 
-  // ── Middle belt (Rue Bsatine / second E-W) ────────────────────────────────
-  { x:789,  y:1485, w:135, h:90,  color:'#263238', label:'Aley Municipality' },
-  { x:1050, y:1536, w:120, h:84,  color:'#01579b', label:'Ittihad Sweets' },
-  { x:1389, y:1500, w:150, h:99,  color:'#880e4f', label:'Obeid Mall' },
-  { x:1560, y:1134, w:120, h:84,  color:'#e65100', label:'Piscine area' },
+  // ── Middle belt ────────────────────────────────────────────────────────────────────────────
+  { x:500,  y:1459, w:135, h:90,  color:'#263238', label:'Aley Municipality' },
+  { x:996,  y:1450, w:120, h:84,  color:'#01579b', label:'Ittihad Sweets' },
+  { x:1494, y:1460, w:150, h:99,  color:'#880e4f', label:'Obeid Mall' },
+  { x:1700, y:1220, w:120, h:84,  color:'#e65100', label:'Piscine area' },
 
-  // ── Lower belt ────────────────────────────────────────────────────────────
-  { x:525,  y:1800, w:135, h:90,  color:'#2e7d32', label:'Goodlife Gym' },
-  { x:1530, y:1950, w:120, h:84,  color:'#37474f', label:'Jarir Printing' },
+  // ── Lower belt ────────────────────────────────────────────────────────────────────────────
+  { x:430,  y:1860, w:135, h:90,  color:'#2e7d32', label:'Goodlife Gym' },
+  { x:1660, y:1950, w:120, h:84,  color:'#37474f', label:'Jarir Printing' },
 
-  // ── South ─────────────────────────────────────────────────────────────────
-  { x:489,  y:2205, w:150, h:99,  color:'#388e3c', label:'Mountain Park' },
-  { x:1590, y:2220, w:120, h:84,  color:'#0277bd', label:'Ain Hala' },
-  { x:789,  y:2460, w:120, h:84,  color:'#c62828', label:'Ain El Saydeh' },
+  // ── South ──────────────────────────────────────────────────────────────────────────────────
+  { x:450,  y:2256, w:150, h:99,  color:'#388e3c', label:'Mountain Park' },
+  { x:1660, y:2200, w:120, h:84,  color:'#0277bd', label:'Ain Hala' },
+  { x:800,  y:2430, w:120, h:84,  color:'#c62828', label:'Ain El Saydeh' },
 ];
 
 function drawBuildings(ctx) {

@@ -1,5 +1,5 @@
 'use strict';
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────────────────
 const PX_PER_KMH = 3.2;
 const MAX_SPEED  = 140;
 const ACCEL      = 80;
@@ -11,9 +11,9 @@ const OFF_MAX    = 40;
 const TURN_BASE  = 240;
 const STEER_RAMP = 420; // deg/s² — how fast steer rate ramps up/down
 
-// ── State ────────────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────────────
 const car = {
-  x: 1395, y: 248,   // on Route 30 peak, facing east
+  x: 2360, y: 720,   // on Route 30 at Aley junction, facing east
   angle: 0,
   speed: 0,
   steerRate: 0,       // current actual turning rate (rad/s), smoothed
@@ -26,7 +26,7 @@ let offRoadAlpha = 0;
 let showMap = false;
 let canvas, ctx;
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── Init ────────────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   canvas = document.getElementById('c');
   ctx    = canvas.getContext('2d');
@@ -46,7 +46,7 @@ function resize() {
   canvas.height = window.innerHeight;
 }
 
-// ── Main loop ────────────────────────────────────────────────────────────────
+// ── Main loop ──────────────────────────────────────────────────────────────────────────
 let last = 0;
 function loop(ts) {
   const dt = Math.min((ts - last) / 1000, 0.05);
@@ -56,7 +56,7 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
-// ── Physics ──────────────────────────────────────────────────────────────────
+// ── Physics ──────────────────────────────────────────────────────────────────────────
 function update(dt) {
   const fwd   = keys['ArrowUp']    || keys['w'] || keys['W'];
   const back  = keys['ArrowDown']  || keys['s'] || keys['S'];
@@ -100,7 +100,7 @@ function update(dt) {
   offRoadAlpha += ((onRd ? 0 : 0.6) - offRoadAlpha) * Math.min(1, dt * 4);
 }
 
-// ── Rendering ────────────────────────────────────────────────────────────────
+// ── Rendering ──────────────────────────────────────────────────────────────────────────
 function render() {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -128,7 +128,7 @@ function render() {
 
 function drawRoads(ctx) {
   for (const r of ROADS) {
-    const isR30 = r.w >= 32;
+    const isR30 = r.w >= 36;
     // Kerb
     ctx.strokeStyle = '#111';
     ctx.lineWidth = r.w + 7;
@@ -191,7 +191,7 @@ function drawCar(ctx) {
   ctx.restore();
 }
 
-// ── Speedometer ──────────────────────────────────────────────────────────────
+// ── Speedometer ──────────────────────────────────────────────────────────────────────────
 function drawSpeedometer(ctx, W, H) {
   const cx = W - 100, cy = H - 100, r = 72;
   const startA = Math.PI * 0.75, endA = Math.PI * 2.25;
@@ -235,7 +235,7 @@ function drawSpeedometer(ctx, W, H) {
   ctx.restore();
 }
 
-// ── Minimap ───────────────────────────────────────────────────────────────────
+// ── Minimap ─────────────────────────────────────────────────────────────────────────────
 function drawMinimap(ctx, W, H) {
   const mw = 150, mh = 94, mx = 12, my = H - mh - 12;
   const sx = mw / WW, sy = mh / WH;
@@ -252,7 +252,7 @@ function drawMinimap(ctx, W, H) {
 
   // Roads on minimap
   for (const r of ROADS) {
-    const isR30 = r.w >= 32;
+    const isR30 = r.w >= 36;
     ctx.strokeStyle = isR30 ? '#e6b800' : '#888';
     ctx.lineWidth = Math.max(1, r.w * sx * 0.6);
     ctx.beginPath();
@@ -271,7 +271,7 @@ function drawMinimap(ctx, W, H) {
   ctx.restore();
 }
 
-// ── Off-road warning ──────────────────────────────────────────────────────────
+// ── Off-road warning ────────────────────────────────────────────────────────────────
 function drawOffRoadWarning(ctx, W, H) {
   if (offRoadAlpha < 0.01) return;
   ctx.save();
@@ -286,7 +286,7 @@ function drawOffRoadWarning(ctx, W, H) {
   ctx.restore();
 }
 
-// ── Full map overlay (M key) ──────────────────────────────────────────────────
+// ── Full map overlay (M key) ────────────────────────────────────────────────────────────────
 function drawFullMap(ctx, W, H) {
   const pad = 40;
   const mw = W - pad*2, mh = H - pad*2;
@@ -309,7 +309,7 @@ function drawFullMap(ctx, W, H) {
   ctx.clip();
 
   for (const r of ROADS) {
-    const big = r.w >= 32;
+    const big = r.w >= 36;
     ctx.strokeStyle = '#111';
     ctx.lineWidth = Math.max(2, (r.w + 6) * sx);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
