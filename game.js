@@ -123,8 +123,6 @@ function renderMap() {
     drawPath(mapCtx, road.points, s.width - 4, s.road);
     if (s.lane) { mapCtx.setLineDash([14, 16]); drawPath(mapCtx, road.points, 1.7, '#f6e3a8e6'); mapCtx.setLineDash([]); }
   }));
-  const labels = [{ at: [33.81225, 35.6043], text: 'Route 30' }, { at: [33.81025, 35.60565], text: 'Aley Center' }, { at: [33.80895, 35.60295], text: 'Piscine Street' }];
-  labels.forEach(({ at, text }) => { const p = project(at); mapCtx.font = '800 12px system-ui'; const w = mapCtx.measureText(text).width + 16; mapCtx.fillStyle = '#1e2921e8'; mapCtx.fillRect(p.x - w / 2, p.y - 14, w, 23); mapCtx.fillStyle = '#fff8e7'; mapCtx.fillText(text, p.x - w / 2 + 8, p.y + 2); });
 }
 
 const spawn = nearestRoad(project([33.80905, 35.60325]));
