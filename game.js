@@ -1,17 +1,21 @@
 const canvas=document.querySelector('#world'),ctx=canvas.getContext('2d');
 const speedLabel=document.querySelector('#speed'),missionLabel=document.querySelector('#mission'),locationLabel=document.querySelector('#location');
-// Hand-curated from the Aley road reference: a small, quiet district where each line is a whole driveable street.
+// A small, quiet district built from the real Aley skeleton.  Geometry is
+// selectively simplified for playability, never replaced with invented streets.
 const style={avenue:{width:46,asphalt:'#4d5557',curb:'#c9c7bd',edge:'#e9e2d2'},collector:{width:34,asphalt:'#596064',curb:'#c9c9c0',edge:'#e9e3d4'},street:{width:26,asphalt:'#666b6b',curb:'#d0d0c6',edge:'#ece5d7'}};
-const P=(x,y)=>({x,y});
+const P=(x,y)=>({x,y}),bounds={north:33.8148,south:33.8070,east:35.6105,west:35.5990},pad=26;
+const geo=([lat,lon])=>P(pad+(lon-bounds.west)/(bounds.east-bounds.west)*(canvas.width-pad*2),pad+(bounds.north-lat)/(bounds.north-bounds.south)*(canvas.height-pad*2));
+const route=(kind,points)=>({kind,points:points.map(geo)});
 const roads=[
- {kind:'avenue',points:[P(-60,650),P(105,620),P(250,555),P(405,490),P(570,455),P(710,380),P(850,305),P(1010,195),P(1340,125)]},
- {kind:'collector',points:[P(105,620),P(112,515),P(140,395),P(166,250),P(300,185),P(470,165),P(620,205),P(710,380)]},
- {kind:'collector',points:[P(166,250),P(280,105),P(470,76),P(655,112),P(825,205),P(850,305)]},
- {kind:'collector',points:[P(405,490),P(430,610),P(550,705),P(730,730),P(915,695),P(1050,620)]},
- {kind:'collector',points:[P(850,305),P(895,420),P(960,535),P(1050,620),P(1170,690),P(1340,712)]},
- {kind:'street',points:[P(140,395),P(305,380),P(475,410),P(570,455)]},{kind:'street',points:[P(305,380),P(330,282),P(300,185)]},
- {kind:'street',points:[P(475,410),P(510,305),P(470,165)]},{kind:'street',points:[P(570,455),P(680,520),P(820,535),P(960,535)]},
- {kind:'street',points:[P(710,380),P(790,452),P(820,535)]},{kind:'street',points:[P(895,420),P(1050,405),P(1180,450)]},{kind:'street',points:[P(1050,620),P(1120,535),P(1180,450)]}
+ route('avenue',[[33.8075959,35.6005318],[33.8076457,35.6016013],[33.8083265,35.6026339],[33.8092329,35.6037821],[33.8097592,35.6042936],[33.8106904,35.6056998],[33.8117953,35.6080242],[33.8124398,35.6090311],[33.8133376,35.6093975],[33.8137734,35.6091666],[33.8142352,35.608854]]),
+ route('collector',[[33.8145576,35.6071535],[33.8138523,35.6072661],[33.813147,35.6069369],[33.8125419,35.6057172],[33.8117954,35.604604],[33.8107257,35.603444],[33.810076,35.603334]]),
+ route('collector',[[33.813147,35.6069369],[33.8132434,35.6064735],[33.813176,35.6056876],[33.8127236,35.6041816],[33.8115246,35.6025173],[33.8105697,35.6014229],[33.8096222,35.5995316]]),
+ route('collector',[[33.81463,35.6079488],[33.8137855,35.6084369],[33.813132,35.6086028],[33.8126155,35.6078964],[33.8122177,35.6063931],[33.8116784,35.6055415],[33.8110665,35.6043113],[33.810076,35.603334],[33.8091801,35.6022678]]),
+ route('street',[[33.8115826,35.6080495],[33.8109184,35.6066324],[33.8105296,35.6061076],[33.8098922,35.6055669],[33.8091099,35.6046376],[33.8082767,35.6040831]]),
+ route('street',[[33.8091801,35.6022678],[33.8085528,35.6014498],[33.8081877,35.6007688],[33.8082185,35.6001194],[33.8087663,35.5991019]]),
+ route('street',[[33.8101429,35.6010354],[33.8106543,35.6005311],[33.8110903,35.6002421],[33.8120275,35.5995704],[33.812104,35.5993965],[33.8115603,35.5990029]]),
+ route('street',[[33.8105697,35.6014229],[33.8110176,35.601262],[33.8120026,35.6017207],[33.8130063,35.6022054],[33.8138557,35.6023912]]),
+ route('street',[[33.8075959,35.6005318],[33.8079194,35.6013491],[33.8085684,35.6019634],[33.8091801,35.6022678]])
 ];
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),roadLength=road=>road.points.slice(1).reduce((n,p,i)=>n+dist(road.points[i],p),0);
 function closest(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,l=dx*dx+dy*dy||1,t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/l));const x=a.x+dx*t,y=a.y+dy*t;return{x,y,distance:Math.hypot(p.x-x,p.y-y)};}
