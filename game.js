@@ -23,7 +23,17 @@ for (const road of roads) for (let i = 1; i < road.p.length; i++) {
   if (pointById[a] && pointById[b]) links.push({ a, b, type: road.t });
 }
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const drawPath = (context, points, width, colour, cap = 'butt') => { context.beginPath(); points.forEach((p, i) => i ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)); context.lineWidth = width; context.lineCap = cap; context.lineJoin = 'round'; context.strokeStyle = colour; context.stroke(); };
+// Draw a road as one swept corridor. The midpoint curves remove the tiny angular
+// kinks that raw mapping nodes create while keeping the real road's direction.
+const drawPath = (context, points, width, colour, cap = 'butt') => {
+  context.beginPath(); context.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length - 1; i++) {
+    const p = points[i], next = points[i + 1];
+    context.quadraticCurveTo(p.x, p.y, (p.x + next.x) / 2, (p.y + next.y) / 2);
+  }
+  if (points.length > 1) { const last = points.at(-1); context.lineTo(last.x, last.y); }
+  context.lineWidth = width; context.lineCap = cap; context.lineJoin = 'round'; context.strokeStyle = colour; context.stroke();
+};
 
 // OSM splits a single physical street into many small ways. Rebuild each road type
 // as maximal chains, only stopping at real junctions or dead ends—not arbitrary data splits.
@@ -87,7 +97,15 @@ function renderMap() {
   for (let c = 0; c < 34; c++) { const cx = random() * canvas.width, cy = random() * canvas.height; for (let i = 0; i < 2 + Math.floor(random() * 4); i++) tree(cx + (random() - .5) * 44, cy + (random() - .5) * 32, 4 + random() * 7); }
   buildings.forEach((building, index) => { const points = building.p.map((id) => pointById[id]); if (points.length < 4 || !points.some(visible)) return; mapCtx.beginPath(); points.forEach((p, i) => i ? mapCtx.lineTo(p.x, p.y) : mapCtx.moveTo(p.x, p.y)); mapCtx.closePath(); mapCtx.fillStyle = index % 3 === 0 ? '#eee4d2' : index % 3 === 1 ? '#ddd2bd' : '#e6dac5'; mapCtx.fill(); mapCtx.strokeStyle = '#b1a68f'; mapCtx.lineWidth = .9; mapCtx.stroke(); });
   const layers = ['service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary_link', 'primary', 'motorway'];
-  layers.forEach((type) => renderRoads.filter((road) => road.type === type).forEach((road) => { const s = style[type] || style.residential; drawPath(mapCtx, road.points, s.width + 6, '#2f332f55'); drawPath(mapCtx, road.points, s.width + 2, s.edge); drawPath(mapCtx, road.points, s.width - 3, s.road); if (s.lane) { mapCtx.setLineDash([11, 12]); drawPath(mapCtx, road.points, 1.5, '#f5dfa0d9'); mapCtx.setLineDash([]); } }));
+  layers.forEach((type) => renderRoads.filter((road) => road.type === type && road.points.length > 1).forEach((road) => {
+    const s = style[type] || style.residential;
+    // verge / sidewalk / asphalt: three continuous passes, never dot-by-dot circles.
+    drawPath(mapCtx, road.points, s.width + 10, '#e8dfc9');
+    drawPath(mapCtx, road.points, s.width + 5, '#31373566');
+    drawPath(mapCtx, road.points, s.width + 1, s.edge);
+    drawPath(mapCtx, road.points, s.width - 4, s.road);
+    if (s.lane) { mapCtx.setLineDash([14, 16]); drawPath(mapCtx, road.points, 1.7, '#f6e3a8e6'); mapCtx.setLineDash([]); }
+  }));
   const labels = [{ at: [33.81225, 35.6043], text: 'Route 30' }, { at: [33.81025, 35.60565], text: 'Aley Center' }, { at: [33.80895, 35.60295], text: 'Piscine Street' }];
   labels.forEach(({ at, text }) => { const p = project(at); mapCtx.font = '800 12px system-ui'; const w = mapCtx.measureText(text).width + 16; mapCtx.fillStyle = '#1e2921e8'; mapCtx.fillRect(p.x - w / 2, p.y - 14, w, 23); mapCtx.fillStyle = '#fff8e7'; mapCtx.fillText(text, p.x - w / 2 + 8, p.y + 2); });
 }
