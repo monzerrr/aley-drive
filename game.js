@@ -1,173 +1,33 @@
-const canvas = document.querySelector('#world');
-const ctx = canvas.getContext('2d');
-const speedLabel = document.querySelector('#speed');
-const missionLabel = document.querySelector('#mission');
-const locationLabel = document.querySelector('#location');
-const { nodes, roads, buildings } = window.ALEY_ROADS;
-
-// This deliberately focuses the first game district instead of showing every road in Aley.
-const bounds = { north: 33.8148, south: 33.8070, east: 35.6105, west: 35.5990 };
-const pad = 26;
-const project = ([lat, lon]) => ({ x: pad + (lon - bounds.west) / (bounds.east - bounds.west) * (canvas.width - pad * 2), y: pad + (bounds.north - lat) / (bounds.north - bounds.south) * (canvas.height - pad * 2) });
-const pointById = Object.fromEntries(Object.entries(nodes).map(([id, value]) => [id, project(value)]));
-const visible = (p) => p && p.x > -90 && p.x < canvas.width + 90 && p.y > -90 && p.y < canvas.height + 90;
-const style = {
-  motorway: { edge: '#af7953', road: '#44484c', width: 31, lane: true }, primary: { edge: '#bb7b4e', road: '#454a4d', width: 27, lane: true },
-  primary_link: { edge: '#bb7b4e', road: '#454a4d', width: 23, lane: true }, secondary: { edge: '#b7a46e', road: '#4b5053', width: 23, lane: true },
-  tertiary: { edge: '#bfc2b8', road: '#575c5d', width: 19, lane: false }, residential: { edge: '#c6c8be', road: '#616566', width: 16, lane: false },
-  unclassified: { edge: '#c6c8be', road: '#5d6162', width: 17, lane: false }, service: { edge: '#c0c8bc', road: '#696d6c', width: 12, lane: false },
-};
-const links = [];
-for (const road of roads) for (let i = 1; i < road.p.length; i++) {
-  const a = road.p[i - 1], b = road.p[i];
-  if (pointById[a] && pointById[b]) links.push({ a, b, type: road.t });
-}
-const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const pathLength = (points) => points.slice(1).reduce((sum, point, index) => sum + dist(points[index], point), 0);
-const polygonArea = (points) => Math.abs(points.reduce((sum, point, index) => {
-  const next = points[(index + 1) % points.length]; return sum + point.x * next.y - next.x * point.y;
-}, 0) / 2);
-// Draw a road as one swept corridor. The midpoint curves remove the tiny angular
-// kinks that raw mapping nodes create while keeping the real road's direction.
-const drawPath = (context, points, width, colour, cap = 'butt') => {
-  context.beginPath(); context.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length - 1; i++) {
-    const p = points[i], next = points[i + 1];
-    context.quadraticCurveTo(p.x, p.y, (p.x + next.x) / 2, (p.y + next.y) / 2);
-  }
-  if (points.length > 1) { const last = points.at(-1); context.lineTo(last.x, last.y); }
-  context.lineWidth = width; context.lineCap = cap; context.lineJoin = 'round'; context.strokeStyle = colour; context.stroke();
-};
-
-// OSM splits a single physical street into many small ways. Rebuild each road type
-// as maximal chains, only stopping at real junctions or dead ends—not arbitrary data splits.
-function mergeLinks() {
-  const output = [];
-  for (const type of [...new Set(links.map((item) => item.type))]) {
-    const group = links.filter((item) => item.type === type);
-    const attached = new Map();
-    group.forEach((link, index) => [link.a, link.b].forEach((id) => {
-      if (!attached.has(id)) attached.set(id, []); attached.get(id).push(index);
-    }));
-    const used = new Set();
-    const trace = (start, firstEdge) => {
-      const ids = [start]; let node = start, edge = firstEdge;
-      while (edge !== undefined && !used.has(edge)) {
-        used.add(edge);
-        const link = group[edge]; const next = link.a === node ? link.b : link.a;
-        ids.push(next); node = next;
-        const choices = (attached.get(node) || []).filter((candidate) => !used.has(candidate));
-        edge = choices.length === 1 && (attached.get(node) || []).length === 2 ? choices[0] : undefined;
-      }
-      const points = ids.map((id) => pointById[id]).filter(Boolean);
-      if (points.length > 1 && points.some(visible)) output.push({ type, points });
-    };
-    // Start chains from actual intersections and dead ends first.
-    attached.forEach((edgeIds, node) => {
-      if (edgeIds.length === 2) return;
-      edgeIds.forEach((edge) => { if (!used.has(edge)) trace(node, edge); });
-    });
-    // Close any loops that have no junction/dead-end seed.
-    group.forEach((link, edge) => { if (!used.has(edge)) trace(link.a, edge); });
-  }
-  return output;
-}
-const renderRoads = mergeLinks();
-function closest(point, a, b) {
-  const dx = b.x - a.x, dy = b.y - a.y, area = dx * dx + dy * dy || 1;
-  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / area));
-  const x = a.x + dx * t, y = a.y + dy * t;
-  return { x, y, distance: Math.hypot(point.x - x, point.y - y) };
-}
-function nearestRoad(point) {
-  let best = null;
-  for (const link of links) {
-    const a = pointById[link.a], b = pointById[link.b]; if (!visible(a) && !visible(b)) continue;
-    const hit = closest(point, a, b); const width = (style[link.type] || style.residential).width;
-    if (!best || hit.distance < best.distance) best = { ...hit, width };
-  }
-  return best;
-}
-function pointOnPath(points, distanceAlong) {
-  let remaining = distanceAlong;
-  for (let i = 1; i < points.length; i++) { const length = dist(points[i - 1], points[i]); if (remaining <= length) { const t = remaining / length; return { x: points[i - 1].x + (points[i].x - points[i - 1].x) * t, y: points[i - 1].y + (points[i].y - points[i - 1].y) * t, angle: Math.atan2(points[i].y - points[i - 1].y, points[i].x - points[i - 1].x) }; } remaining -= length; }
-  const a = points.at(-2), b = points.at(-1); return { ...b, angle: Math.atan2(b.y - a.y, b.x - a.x) };
-}
-const mapLayer = document.createElement('canvas'); mapLayer.width = canvas.width; mapLayer.height = canvas.height; const mapCtx = mapLayer.getContext('2d');
-function tree(x, y, r) { mapCtx.fillStyle = '#5a513d55'; mapCtx.beginPath(); mapCtx.ellipse(x + 2, y + 3, r, r * .58, 0, 0, Math.PI * 2); mapCtx.fill(); mapCtx.fillStyle = '#285d3c'; mapCtx.beginPath(); mapCtx.arc(x, y, r, 0, Math.PI * 2); mapCtx.fill(); mapCtx.fillStyle = '#5d8b48'; mapCtx.beginPath(); mapCtx.arc(x - r * .24, y - r * .28, r * .46, 0, Math.PI * 2); mapCtx.fill(); }
-function renderMap() {
-  const bg = mapCtx.createLinearGradient(0, 0, canvas.width, canvas.height); bg.addColorStop(0, '#e6ddc7'); bg.addColorStop(1, '#c9b998'); mapCtx.fillStyle = bg; mapCtx.fillRect(0, 0, canvas.width, canvas.height);
-  let seed = 59; const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-  for (let c = 0; c < 34; c++) { const cx = random() * canvas.width, cy = random() * canvas.height; for (let i = 0; i < 2 + Math.floor(random() * 4); i++) tree(cx + (random() - .5) * 44, cy + (random() - .5) * 32, 4 + random() * 7); }
-  // Keep only block-sized footprints. Tiny raw OSM sheds/awnings were making the town look like visual noise.
-  buildings.forEach((building, index) => {
-    const points = building.p.map((id) => pointById[id]).filter(Boolean);
-    if (points.length < 4 || !points.some(visible) || polygonArea(points) < 95) return;
-    mapCtx.beginPath(); points.forEach((p, i) => i ? mapCtx.lineTo(p.x, p.y) : mapCtx.moveTo(p.x, p.y)); mapCtx.closePath();
-    mapCtx.fillStyle = index % 3 === 0 ? '#e9dfcd' : index % 3 === 1 ? '#d8cbb4' : '#e1d5c1'; mapCtx.fill();
-    mapCtx.strokeStyle = '#a99d87'; mapCtx.lineWidth = 1.3; mapCtx.stroke();
-  });
-  // Paint the full network into shared continuous surfaces. Adjacent OSM segments
-  // overlap inside one path, so an intersection is one piece of asphalt—not a row of pills.
-  const paintNetwork = (extra, colour) => {
-    mapCtx.beginPath();
-    links.forEach((link) => { const a = pointById[link.a], b = pointById[link.b]; if (!visible(a) && !visible(b)) return; const s = style[link.type] || style.residential; mapCtx.moveTo(a.x, a.y); mapCtx.lineTo(b.x, b.y); });
-    mapCtx.lineCap = 'square'; mapCtx.lineJoin = 'round'; mapCtx.lineWidth = 1; mapCtx.strokeStyle = colour;
-    // Individual weighted passes preserve hierarchy while the shared shoulders fuse every join.
-    ['service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary_link', 'primary', 'motorway'].forEach((type) => {
-      mapCtx.beginPath(); links.filter((link) => link.type === type).forEach((link) => { const a = pointById[link.a], b = pointById[link.b]; if (!visible(a) && !visible(b)) return; mapCtx.moveTo(a.x, a.y); mapCtx.lineTo(b.x, b.y); });
-      const s = style[type] || style.residential; mapCtx.lineWidth = s.width + extra; mapCtx.stroke();
-    });
-  };
-  // Quiet, readable road stack: wide pale sidewalks, a slim shaded curb, then asphalt.
-  paintNetwork(14, '#ded8c9');
-  paintNetwork(8, '#aeb1aa');
-  paintNetwork(3, '#3b4140');
-  ['service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary_link', 'primary', 'motorway'].forEach((type) => {
-    mapCtx.beginPath(); links.filter((link) => link.type === type).forEach((link) => { const a = pointById[link.a], b = pointById[link.b]; if (!visible(a) && !visible(b)) return; mapCtx.moveTo(a.x, a.y); mapCtx.lineTo(b.x, b.y); });
-    const s = style[type] || style.residential; mapCtx.lineWidth = s.width - 4; mapCtx.lineCap = 'square'; mapCtx.lineJoin = 'round'; mapCtx.strokeStyle = s.road; mapCtx.stroke();
-  });
-  // Only the long major corridors get markings; this keeps the neighbourhood legible, not stripe-covered.
-  mapCtx.setLineDash([16, 18]);
-  renderRoads.filter((road) => ['motorway', 'primary', 'primary_link', 'secondary'].includes(road.type) && pathLength(road.points) > 115)
-    .forEach((road) => drawPath(mapCtx, road.points, 1.55, '#f0dc9bd6'));
-  mapCtx.setLineDash([]);
-}
-
-const spawn = nearestRoad(project([33.80905, 35.60325]));
-const car = { x: spawn.x, y: spawn.y, angle: -.28, velocity: 0 };
-const deliverySpots = [[33.8125, 35.6052], [33.8105, 35.6086], [33.8080, 35.6015]].map((geo) => nearestRoad(project(geo)));
-let delivery = 0, completed = false;
-const trafficPaths = renderRoads.filter((road) => ['primary', 'secondary', 'tertiary'].includes(road.type) && road.points.length > 6).sort((a, b) => b.points.length - a.points.length).slice(0, 5);
-// Ambient traffic stays deliberately calm, so the streets feel lived-in rather than frantic.
-const traffic = trafficPaths.map((road, i) => ({ road, offset: i * 93, speed: 0.052 + i * .006, colour: ['#456f9c', '#d4a440', '#b44f4a', '#7d8f72', '#765c92'][i] }));
-const keys = new Set(); let last = performance.now(); let paused = document.hidden;
-function reset() { Object.assign(car, { x: spawn.x, y: spawn.y, angle: -.28, velocity: 0 }); }
-function vehicle(x, y, angle, colour, scale = 1) { ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.shadowColor = '#0009'; ctx.shadowBlur = 7; ctx.fillStyle = colour; ctx.fillRect(-14 * scale, -8 * scale, 28 * scale, 16 * scale); ctx.shadowBlur = 0; ctx.fillStyle = '#1f292c'; ctx.fillRect(-5 * scale, -6 * scale, 11 * scale, 12 * scale); ctx.fillStyle = '#ffe17d'; ctx.fillRect(10 * scale, -4 * scale, 4 * scale, 8 * scale); ctx.strokeStyle = '#fff7df'; ctx.lineWidth = 1.3; ctx.strokeRect(-14 * scale, -8 * scale, 28 * scale, 16 * scale); ctx.restore(); }
-function drawDelivery() { if (completed) return; const target = deliverySpots[delivery]; const pulse = 1 + Math.sin(performance.now() / 180) * .12; ctx.beginPath(); ctx.arc(target.x, target.y, 16 * pulse, 0, Math.PI * 2); ctx.fillStyle = '#4ea8eaff'; ctx.fill(); ctx.beginPath(); ctx.arc(target.x, target.y, 7, 0, Math.PI * 2); ctx.fillStyle = '#ecf8ffff'; ctx.fill(); }
-function drawTraffic(now) { traffic.forEach((npc) => { const lengths = npc.road.points.slice(1).reduce((sum, point, i) => sum + dist(npc.road.points[i], point), 0); const p = pointOnPath(npc.road.points, (now * npc.speed + npc.offset) % lengths); vehicle(p.x, p.y, p.angle, npc.colour, .72); }); }
-function draw(now) { ctx.drawImage(mapLayer, 0, 0); drawDelivery(); drawTraffic(now); vehicle(car.x, car.y, car.angle, '#dd3e37'); }
-function update(now) {
-  if (paused) return;
-  const dt = Math.min((now - last) / 16.67, 2); last = now;
-  if (keys.has('w') || keys.has('arrowup')) car.velocity += .085 * dt;
-  if (keys.has('s') || keys.has('arrowdown')) car.velocity -= .1 * dt;
-  car.velocity *= Math.pow(.94, dt); car.velocity = Math.max(-2.7, Math.min(4.8, car.velocity));
-  const turn = (keys.has('a') || keys.has('arrowleft') ? -1 : 0) + (keys.has('d') || keys.has('arrowright') ? 1 : 0);
-  car.angle += turn * .047 * dt * (car.velocity >= 0 ? 1 : -1);
-  const candidate = { x: car.x + Math.cos(car.angle) * car.velocity * dt, y: car.y + Math.sin(car.angle) * car.velocity * dt };
-  const surface = nearestRoad(candidate);
-  if (surface && surface.distance <= surface.width / 2 + 8) { car.x = surface.x; car.y = surface.y; } else car.velocity *= .35;
-  if (!completed && Math.hypot(car.x - deliverySpots[delivery].x, car.y - deliverySpots[delivery].y) < 22) { delivery++; if (delivery === deliverySpots.length) completed = true; }
-  speedLabel.textContent = `${Math.round(Math.abs(car.velocity) * 19)} km/h`;
-  missionLabel.textContent = completed ? 'Shift complete ✓' : `Delivery ${delivery + 1}/${deliverySpots.length}`;
-  locationLabel.textContent = car.y < canvas.height * .28 ? 'Route 30' : car.x > canvas.width * .57 ? 'Aley Center side' : 'Piscine Street';
-  draw(now); requestAnimationFrame(update);
-}
-addEventListener('keydown', (event) => { const key = event.key.toLowerCase(); if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','r'].includes(key)) event.preventDefault(); keys.add(key); if (key === 'r') reset(); });
-addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
-document.addEventListener('visibilitychange', () => {
-  paused = document.hidden;
-  if (!paused) { last = performance.now(); requestAnimationFrame(update); }
-});
-renderMap(); draw(performance.now()); requestAnimationFrame(update);
+const canvas=document.querySelector('#world'),ctx=canvas.getContext('2d');
+const speedLabel=document.querySelector('#speed'),missionLabel=document.querySelector('#mission'),locationLabel=document.querySelector('#location');
+// Hand-curated from the Aley road reference: a small, quiet district where each line is a whole driveable street.
+const style={avenue:{width:46,asphalt:'#4d5557',curb:'#c9c7bd',edge:'#e9e2d2'},collector:{width:34,asphalt:'#596064',curb:'#c9c9c0',edge:'#e9e3d4'},street:{width:26,asphalt:'#666b6b',curb:'#d0d0c6',edge:'#ece5d7'}};
+const P=(x,y)=>({x,y});
+const roads=[
+ {kind:'avenue',points:[P(-60,650),P(105,620),P(250,555),P(405,490),P(570,455),P(710,380),P(850,305),P(1010,195),P(1340,125)]},
+ {kind:'collector',points:[P(105,620),P(112,515),P(140,395),P(166,250),P(300,185),P(470,165),P(620,205),P(710,380)]},
+ {kind:'collector',points:[P(166,250),P(280,105),P(470,76),P(655,112),P(825,205),P(850,305)]},
+ {kind:'collector',points:[P(405,490),P(430,610),P(550,705),P(730,730),P(915,695),P(1050,620)]},
+ {kind:'collector',points:[P(850,305),P(895,420),P(960,535),P(1050,620),P(1170,690),P(1340,712)]},
+ {kind:'street',points:[P(140,395),P(305,380),P(475,410),P(570,455)]},{kind:'street',points:[P(305,380),P(330,282),P(300,185)]},
+ {kind:'street',points:[P(475,410),P(510,305),P(470,165)]},{kind:'street',points:[P(570,455),P(680,520),P(820,535),P(960,535)]},
+ {kind:'street',points:[P(710,380),P(790,452),P(820,535)]},{kind:'street',points:[P(895,420),P(1050,405),P(1180,450)]},{kind:'street',points:[P(1050,620),P(1120,535),P(1180,450)]}
+];
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),roadLength=road=>road.points.slice(1).reduce((n,p,i)=>n+dist(road.points[i],p),0);
+function closest(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,l=dx*dx+dy*dy||1,t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/l));const x=a.x+dx*t,y=a.y+dy*t;return{x,y,distance:Math.hypot(p.x-x,p.y-y)};}
+function nearestRoad(point){let best;roads.forEach(road=>road.points.slice(1).forEach((b,i)=>{const hit=closest(point,road.points[i],b);if(!best||hit.distance<best.distance)best={...hit,road,width:style[road.kind].width};}));return best;}
+function drawPath(context,points,width,colour){context.beginPath();context.moveTo(points[0].x,points[0].y);for(let i=1;i<points.length-1;i++){const p=points[i],n=points[i+1];context.quadraticCurveTo(p.x,p.y,(p.x+n.x)/2,(p.y+n.y)/2);}context.lineTo(points.at(-1).x,points.at(-1).y);context.lineWidth=width;context.lineCap='round';context.lineJoin='round';context.strokeStyle=colour;context.stroke();}
+function pointOnPath(points,at){for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i],l=dist(a,b);if(at<=l){const t=at/l;return{x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,angle:Math.atan2(b.y-a.y,b.x-a.x)};}at-=l;}const a=points.at(-2),b=points.at(-1);return{...b,angle:Math.atan2(b.y-a.y,b.x-a.x)};}
+const mapLayer=document.createElement('canvas');mapLayer.width=canvas.width;mapLayer.height=canvas.height;const mapCtx=mapLayer.getContext('2d');
+function polygon(points,fill,stroke='#aa9e8a'){mapCtx.beginPath();points.forEach((p,i)=>i?mapCtx.lineTo(p.x,p.y):mapCtx.moveTo(p.x,p.y));mapCtx.closePath();mapCtx.fillStyle=fill;mapCtx.fill();mapCtx.lineWidth=1.2;mapCtx.strokeStyle=stroke;mapCtx.stroke();}
+function block(x,y,w,h,a,colour){const c=Math.cos(a),s=Math.sin(a),p=(dx,dy)=>P(x+dx*c-dy*s,y+dx*s+dy*c);polygon([p(-w/2,-h/2),p(w/2,-h/2),p(w/2,h/2),p(-w/2,h/2)],colour);polygon([p(-w/2+7,-h/2+7),p(w/2-7,-h/2+7),p(w/2-7,h/2-7),p(-w/2+7,h/2-7)],'#ffffff20','#b8ad99');}
+function tree(x,y,r=8){mapCtx.fillStyle='#3b423833';mapCtx.beginPath();mapCtx.ellipse(x+2,y+4,r,r*.58,0,0,Math.PI*2);mapCtx.fill();mapCtx.fillStyle='#315f40';mapCtx.beginPath();mapCtx.arc(x,y,r,0,Math.PI*2);mapCtx.fill();mapCtx.fillStyle='#6d934e';mapCtx.beginPath();mapCtx.arc(x-r*.25,y-r*.28,r*.48,0,Math.PI*2);mapCtx.fill();}
+const blocks=[[88,137,120,66,-.22],[260,94,142,72,-.1],[470,76,106,58,.18],[650,96,138,70,.35],[825,132,144,78,.45],[276,276,130,80,-.1],[460,286,114,86,.17],[620,296,116,70,.36],[985,316,156,88,-.18],[1110,260,144,84,-.36],[215,474,120,76,-.36],[340,540,94,84,-.22],[575,585,150,80,.1],[775,610,132,92,-.04],[1035,520,134,77,.34],[1210,560,130,82,.24],[170,710,158,70,-.08],[410,710,132,72,.14],[995,720,128,61,-.18],[1190,746,155,58,.05]];
+const treeSpots=[[49,210],[91,274],[85,345],[205,204],[243,333],[365,128],[412,220],[536,112],[595,180],[708,140],[754,234],[904,169],[945,246],[1065,256],[1158,318],[1102,380],[987,455],[1128,508],[1225,425],[1200,622],[1080,690],[934,635],[845,669],[702,650],[610,670],[506,612],[375,630],[252,590],[175,543],[72,545],[54,697],[276,730],[461,735]];
+function renderMap(){const bg=mapCtx.createLinearGradient(0,0,canvas.width,canvas.height);bg.addColorStop(0,'#e7dfcf');bg.addColorStop(1,'#d4c5a9');mapCtx.fillStyle=bg;mapCtx.fillRect(0,0,canvas.width,canvas.height);mapCtx.fillStyle='#d0c8b6';mapCtx.fillRect(770,408,104,72);mapCtx.fillRect(1095,357,130,58);mapCtx.fillRect(230,425,92,65);blocks.forEach(([x,y,w,h,a],i)=>block(x,y,w,h,a,['#eee4d1','#d8c9b1','#e3d5c0','#d2c1a7'][i%4]));treeSpots.forEach(([x,y],i)=>tree(x,y,6+i%4));roads.forEach(r=>{const s=style[r.kind];drawPath(mapCtx,r.points,s.width+14,s.edge);});roads.forEach(r=>{const s=style[r.kind];drawPath(mapCtx,r.points,s.width+6,s.curb);});roads.forEach(r=>{const s=style[r.kind];drawPath(mapCtx,r.points,s.width,s.asphalt);});mapCtx.save();mapCtx.setLineDash([20,19]);drawPath(mapCtx,roads[0].points,2,'#f3db91');mapCtx.restore();[[405,490,.32],[710,380,-.53],[850,305,-.58],[1050,620,.58]].forEach(([x,y,a])=>{mapCtx.save();mapCtx.translate(x,y);mapCtx.rotate(a);mapCtx.fillStyle='#eee5d0aa';for(let i=-1;i<=1;i++)mapCtx.fillRect(-5,i*7-2,10,3);mapCtx.restore();});}
+const spawn=nearestRoad(P(236,558));const car={x:spawn.x,y:spawn.y,angle:-.39,velocity:0};const deliverySpots=[P(699,380),P(1020,195),P(896,695)].map(nearestRoad);let delivery=0,completed=false;
+const traffic=[roads[0],roads[1],roads[3],roads[4],roads[8]].map((road,i)=>({road,offset:i*124,speed:.034+i*.004,colour:['#416b96','#d5a23d','#ba554d','#72846a','#765b91'][i]}));const keys=new Set();let last=performance.now(),paused=document.hidden;
+function reset(){Object.assign(car,{x:spawn.x,y:spawn.y,angle:-.39,velocity:0});}function vehicle(x,y,a,colour,scale=1){ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.shadowColor='#0008';ctx.shadowBlur=6;ctx.fillStyle=colour;ctx.fillRect(-14*scale,-8*scale,28*scale,16*scale);ctx.shadowBlur=0;ctx.fillStyle='#1e292b';ctx.fillRect(-5*scale,-6*scale,11*scale,12*scale);ctx.fillStyle='#ffe17d';ctx.fillRect(10*scale,-4*scale,4*scale,8*scale);ctx.strokeStyle='#fff7df';ctx.lineWidth=1.2;ctx.strokeRect(-14*scale,-8*scale,28*scale,16*scale);ctx.restore();}
+function drawDelivery(){if(completed)return;const t=deliverySpots[delivery],pulse=1+Math.sin(performance.now()/180)*.12;ctx.beginPath();ctx.arc(t.x,t.y,16*pulse,0,Math.PI*2);ctx.fillStyle='#4ea8eaff';ctx.fill();ctx.beginPath();ctx.arc(t.x,t.y,7,0,Math.PI*2);ctx.fillStyle='#effaff';ctx.fill();}function drawTraffic(now){traffic.forEach(n=>{const p=pointOnPath(n.road.points,(now*n.speed+n.offset)%roadLength(n.road));vehicle(p.x,p.y,p.angle,n.colour,.72);});}function draw(now){ctx.drawImage(mapLayer,0,0);drawDelivery();drawTraffic(now);vehicle(car.x,car.y,car.angle,'#dd3e37');}
+function update(now){if(paused)return;const dt=Math.min((now-last)/16.67,2);last=now;if(keys.has('w')||keys.has('arrowup'))car.velocity+=.075*dt;if(keys.has('s')||keys.has('arrowdown'))car.velocity-=.09*dt;car.velocity*=Math.pow(.94,dt);car.velocity=Math.max(-2.4,Math.min(4.1,car.velocity));const turn=(keys.has('a')||keys.has('arrowleft')?-1:0)+(keys.has('d')||keys.has('arrowright')?1:0);car.angle+=turn*.046*dt*(car.velocity>=0?1:-1);const candidate=P(car.x+Math.cos(car.angle)*car.velocity*dt,car.y+Math.sin(car.angle)*car.velocity*dt),surface=nearestRoad(candidate);if(surface&&surface.distance<=surface.width/2+8){car.x=surface.x;car.y=surface.y;}else car.velocity*=.28;if(!completed&&Math.hypot(car.x-deliverySpots[delivery].x,car.y-deliverySpots[delivery].y)<22){delivery++;if(delivery===deliverySpots.length)completed=true;}speedLabel.textContent=`${Math.round(Math.abs(car.velocity)*19)} km/h`;missionLabel.textContent=completed?'Shift complete ✓':`Delivery ${delivery+1}/${deliverySpots.length}`;locationLabel.textContent='Aley drive district';draw(now);requestAnimationFrame(update);}
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','r'].includes(k))e.preventDefault();keys.add(k);if(k==='r')reset();});addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));document.addEventListener('visibilitychange',()=>{paused=document.hidden;if(!paused){last=performance.now();requestAnimationFrame(update);}});renderMap();draw(performance.now());requestAnimationFrame(update);
