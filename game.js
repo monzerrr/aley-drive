@@ -107,22 +107,25 @@ function renderMap() {
     mapCtx.fillStyle = index % 3 === 0 ? '#e9dfcd' : index % 3 === 1 ? '#d8cbb4' : '#e1d5c1'; mapCtx.fill();
     mapCtx.strokeStyle = '#a99d87'; mapCtx.lineWidth = 1.3; mapCtx.stroke();
   });
-  const layers = ['service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary_link', 'primary', 'motorway'];
-  layers.forEach((type) => renderRoads.filter((road) => {
-    if (road.points.length < 2) return false;
-    const length = pathLength(road.points);
-    // Curated playable street hierarchy: retain real geometry but remove short, messy mapping fragments.
-    return ['motorway', 'primary', 'primary_link', 'secondary'].includes(type) ? length > 40 :
-      ['tertiary', 'residential', 'unclassified'].includes(type) ? length > 78 : length > 100;
-  }).forEach((road) => {
-    const s = style[type] || style.residential;
-    // verge / sidewalk / asphalt: three continuous passes, never dot-by-dot circles.
-    drawPath(mapCtx, road.points, s.width + 10, '#e8dfc9');
-    drawPath(mapCtx, road.points, s.width + 5, '#31373566');
-    drawPath(mapCtx, road.points, s.width + 1, s.edge);
-    drawPath(mapCtx, road.points, s.width - 4, s.road);
-    if (s.lane) { mapCtx.setLineDash([14, 16]); drawPath(mapCtx, road.points, 1.7, '#f6e3a8e6'); mapCtx.setLineDash([]); }
-  }));
+  // Paint the full network into shared continuous surfaces. Adjacent OSM segments
+  // overlap inside one path, so an intersection is one piece of asphalt—not a row of pills.
+  const paintNetwork = (extra, colour) => {
+    mapCtx.beginPath();
+    links.forEach((link) => { const a = pointById[link.a], b = pointById[link.b]; if (!visible(a) && !visible(b)) return; const s = style[link.type] || style.residential; mapCtx.moveTo(a.x, a.y); mapCtx.lineTo(b.x, b.y); });
+    mapCtx.lineCap = 'square'; mapCtx.lineJoin = 'round'; mapCtx.lineWidth = 1; mapCtx.strokeStyle = colour;
+    // Individual weighted passes preserve hierarchy while the shared shoulders fuse every join.
+    ['service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary_link', 'primary', 'motorway'].forEach((type) => {
+      mapCtx.beginPath(); links.filter((link) => link.type === type).forEach((link) => { const a = pointById[link.a], b = pointById[link.b]; if (!visible(a) && !visible(b)) return; mapCtx.moveTo(a.x, a.y); mapCtx.lineTo(b.x, b.y); });
+      const s = style[type] || style.residential; mapCtx.lineWidth = s.width + extra; mapCtx.stroke();
+    });
+  };
+  paintNetwork(11, '#e9dfc8');
+  paintNetwork(6, '#343a38');
+  paintNetwork(2, '#b8ad95');
+  ['service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary_link', 'primary', 'motorway'].forEach((type) => {
+    mapCtx.beginPath(); links.filter((link) => link.type === type).forEach((link) => { const a = pointById[link.a], b = pointById[link.b]; if (!visible(a) && !visible(b)) return; mapCtx.moveTo(a.x, a.y); mapCtx.lineTo(b.x, b.y); });
+    const s = style[type] || style.residential; mapCtx.lineWidth = s.width - 4; mapCtx.lineCap = 'square'; mapCtx.lineJoin = 'round'; mapCtx.strokeStyle = s.road; mapCtx.stroke();
+  });
 }
 
 const spawn = nearestRoad(project([33.80905, 35.60325]));
