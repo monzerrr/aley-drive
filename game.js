@@ -7,13 +7,16 @@ const BRAKE      = 180;
 const FRICTION   = 20;
 const OFF_FRIC   = 55;
 const OFF_MAX    = 40;
-const TURN_BASE  = 180;
+// Steering: max deg/s at top speed; smoothed with 12 deg/s² ramp so no snap
+const TURN_BASE  = 240;
+const STEER_RAMP = 420; // deg/s² — how fast steer rate ramps up/down
 
 // ── State ────────────────────────────────────────────────────────────────────
 const car = {
-  x: 2085, y: 744,
-  angle: 0,   // radians; 0 = east
-  speed: 0,   // km/h
+  x: 1395, y: 248,   // on Route 30 peak, facing east
+  angle: 0,
+  speed: 0,
+  steerRate: 0,       // current actual turning rate (rad/s), smoothed
 };
 
 const cam = { x: car.x, y: car.y };
@@ -75,9 +78,15 @@ function update(dt) {
       : Math.min(-OFF_MAX * 0.4, car.speed + OFF_FRIC * dt);
 
   const spd = Math.abs(car.speed);
-  const turnRate = TURN_BASE * (spd / MAX_SPEED) * (Math.PI / 180);
-  if (left)  car.angle -= turnRate * dt * Math.sign(car.speed);
-  if (right) car.angle += turnRate * dt * Math.sign(car.speed);
+  const maxRate = TURN_BASE * Math.max(0.15, spd / MAX_SPEED) * (Math.PI / 180);
+  const rampRad = STEER_RAMP * (Math.PI / 180) * dt;
+  const targetRate = left  ? -maxRate * Math.sign(car.speed)
+                   : right ?  maxRate * Math.sign(car.speed)
+                   : 0;
+  // Ramp steer rate toward target — prevents snapping
+  if (car.steerRate < targetRate) car.steerRate = Math.min(targetRate, car.steerRate + rampRad);
+  else                            car.steerRate = Math.max(targetRate, car.steerRate - rampRad);
+  car.angle += car.steerRate * dt;
 
   car.x += Math.cos(car.angle) * car.speed * PX_PER_KMH * dt;
   car.y += Math.sin(car.angle) * car.speed * PX_PER_KMH * dt;
@@ -197,7 +206,6 @@ function drawSpeedometer(ctx, W, H) {
   ctx.fill();
 
   // Color arc
-  const grad = ctx.createConicalGradient ? null : null; // fallback below
   const arcEnd = startA + (endA - startA) * frac;
   ctx.lineWidth = 10;
   ctx.lineCap = 'round';
