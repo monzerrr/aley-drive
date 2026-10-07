@@ -1,12 +1,13 @@
 'use strict';
 // ── Constants ────────────────────────────────────────────────────────────────
-const PX_PER_KMH = 3.2;   // world-px per frame at 1 km/h (60 fps) → ~448px/s @ 140
-const MAX_SPEED  = 140;    // km/h
-const ACCEL      = 80;     // km/h per second
+const PX_PER_KMH = 3.2;
+const MAX_SPEED  = 140;
+const ACCEL      = 80;
 const BRAKE      = 180;
-const FRICTION   = 32;
-const OFF_FRIC   = 260;
-const TURN_BASE  = 180;    // deg/s at max speed (speed-sensitive)
+const FRICTION   = 20;
+const OFF_FRIC   = 55;
+const OFF_MAX    = 40;
+const TURN_BASE  = 180;
 
 // ── State ────────────────────────────────────────────────────────────────────
 const car = {
@@ -59,16 +60,19 @@ function update(dt) {
   const left  = keys['ArrowLeft']  || keys['a'] || keys['A'];
   const right = keys['ArrowRight'] || keys['d'] || keys['D'];
 
-  if (fwd)       car.speed = Math.min(MAX_SPEED, car.speed + ACCEL * dt);
-  else if (back) car.speed = Math.max(-MAX_SPEED*0.4, car.speed - BRAKE * dt);
+  const onRd = pointOnRoad(car.x, car.y);
+  const topSpd = onRd ? MAX_SPEED : OFF_MAX;
+  if (fwd)       car.speed = Math.min(topSpd, car.speed + ACCEL * dt);
+  else if (back) car.speed = Math.max(-topSpd * 0.4, car.speed - BRAKE * dt);
   else {
-    const fr = pointOnRoad(car.x, car.y) ? FRICTION : OFF_FRIC;
+    const fr = onRd ? FRICTION : OFF_FRIC;
     if (car.speed > 0) car.speed = Math.max(0, car.speed - fr * dt);
     else               car.speed = Math.min(0, car.speed + fr * dt);
   }
-
-  if (!pointOnRoad(car.x, car.y) && car.speed > 0)
-    car.speed = Math.max(0, car.speed - OFF_FRIC * dt);
+  if (!onRd && Math.abs(car.speed) > OFF_MAX)
+    car.speed = car.speed > 0
+      ? Math.max(OFF_MAX, car.speed - OFF_FRIC * dt)
+      : Math.min(-OFF_MAX * 0.4, car.speed + OFF_FRIC * dt);
 
   const spd = Math.abs(car.speed);
   const turnRate = TURN_BASE * (spd / MAX_SPEED) * (Math.PI / 180);
@@ -84,8 +88,7 @@ function update(dt) {
   cam.x += (car.x - cam.x) * lerp;
   cam.y += (car.y - cam.y) * lerp;
 
-  const onRoad = pointOnRoad(car.x, car.y);
-  offRoadAlpha += ((onRoad ? 0 : 0.6) - offRoadAlpha) * Math.min(1, dt * 4);
+  offRoadAlpha += ((onRd ? 0 : 0.6) - offRoadAlpha) * Math.min(1, dt * 4);
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
